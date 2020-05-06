@@ -1,0 +1,12 @@
+輸入雲端資料夾路徑 => /Volumes/lcms_sqliteDB/JC_2020-05-05_10:22:00_____國中0505
+輸入硬碟資料夾路徑 => /Volumes/學習王108國中試讀/StudyExpertII
+請輸入新的 config version（目前為20200505）=> 20200505
+要拷貝sql檔案嗎? (y/n)n
+要拷貝xlsx檔案嗎? (y/n)n
+{ '雲端資料夾路徑': '/Volumes/lcms_sqliteDB/JC_2020-05-05_10:22:00_____國中0505',
+  '硬碟資料夾路徑': '/Volumes/學習王108國中試讀/StudyExpertII',
+  '資料夾檢測': 'CR,Data,PDF,QB108 皆存在',
+  'config檔': '20200505',
+  sql: false,
+  xlsx: false }
+資料是否正確? (y/n)y

@@ -6,12 +6,12 @@
 	    input: process.stdin,
 	    output: process.stdout
 	});
+	const checkFileTypes = ["sql", "xlsx"];
+	const targetFolders = ["CR", "Data", "PDF", "QB108"];
 
 	let confirm = {};
-
-	const targetFolders = ["CR", "Data", "PDF", "QB108"];
-	let missFolders = [];
-	let boxChildfolders = [];
+	let total = 0;
+	let ok = 0;
 
 	let cloudFolder = await ask("輸入雲端資料夾路徑 => ");
 	try {
@@ -22,6 +22,11 @@
 		confirm["雲端資料夾路徑"] = cloudFolder;
 	} catch (err) {
 		console.error('cannot access cloudFolder!', err);
+		process.exit(0);
+	}
+	let cloudChildMissingFolders =  await checkChildFolders(cloudFolder);
+	if(cloudChildMissingFolders.length > 0){
+		console.error(`雲端資料夾缺少子資料夾(${cloudChildMissingFolders.join(',')})`);
 		process.exit(0);
 	}
 
@@ -36,14 +41,10 @@
 		console.error('cannot access boxFolder!', err);
 		process.exit(0);
 	}
+	let boxChildMissingFolders =  await checkChildFolders(boxFolder);
 
-	let total = 0;
-	let ok = 0;
-
-	//check folder
-	boxChildfolders = await getChildFolders(boxFolder);
-
-	if(childFoldersMatch()){
+	
+	if(boxChildMissingFolders.length == 0){
 		confirm["資料夾檢測"] = `${targetFolders.join(",")} 皆存在`;
 		try{
 			let _configPath = `${boxFolder}/../Resources/config.txt`;
@@ -62,8 +63,8 @@
 		start();
 	}
 	else{
-		confirm["資料夾檢測"] = `硬碟資料夾有少(${missFolders.join(",")})`;
-		let _continue = await ask(`硬碟資料夾有少(${missFolders.join(",")}) 繼續嗎? (y/n)`);
+		confirm["資料夾檢測"] = `硬碟資料夾有少(${boxChildMissingFolders.join(",")})`;
+		let _continue = await ask(`硬碟資料夾有少(${boxChildMissingFolders.join(",")}) 繼續嗎? (y/n)`);
 		if(_continue.toLowerCase() === "y")
 	    	start();
 	    else{
@@ -81,6 +82,7 @@
 
 	async function start(){
 		try{
+			await askCheckFileTypes();
 			console.log(confirm);
 			let _ok = await ask("資料是否正確? (y/n)");
 			if(_ok.toLowerCase() === "y"){
@@ -123,6 +125,19 @@
 		}
 	}
 
+	function askCheckFileTypes(){
+		return new Promise(async (resolve, reject) => {
+			let _index = 0;
+			while(_index < checkFileTypes.length){
+				let _type = checkFileTypes[_index];
+				let _accept = await ask(`要拷貝${_type}檔案嗎? (y/n)`);
+				confirm[_type] = _accept.toLowerCase() === "y" ? true : false;
+				_index++;
+			}
+			resolve();
+		});
+	}
+
 	async function waitForExit(){
 		await ask(`按任意鍵結束`);
 		process.exit(0);
@@ -142,17 +157,18 @@
 		});
 	}
 
-	function childFoldersMatch(){
-		let _match = true;
+	function checkChildFolders(_rootFolder){
+		return new Promise(async (resolve, reject) => {
+			let _childFolders = await getChildFolders(_rootFolder);
+			let _missFolders = [];
 
-		targetFolders.forEach((_folder) => {
-			if(!boxChildfolders.includes(_folder)){
-				_match = false;
-				missFolders.push(_folder);
-			}
+			targetFolders.forEach((_folder) => {
+				if(!_childFolders.includes(_folder))
+					_missFolders.push(_folder);
+			});
+
+			resolve(_missFolders);
 		});
-
-		return _match;
 	}
 
 	function getFilesMap(_path){
@@ -167,8 +183,15 @@
 			_dirents.forEach((_dirent) => {
 				if(_dirent.isDirectory())
 					_promises.push(getFilesMap(`${_path}/${_dirent.name}`));
-				else
-					_currentMap[_currentFolder].push(_dirent.name);
+				else{
+					if(isSpecificFile(_dirent.name)){
+						let _ext = _dirent.name.split(".")[1];
+						if(confirm[_ext] === true)
+							_currentMap[_currentFolder].push(_dirent.name);
+					}
+					else
+						_currentMap[_currentFolder].push(_dirent.name);
+				}
 			});
 
 			Promise.all(_promises).then((_maps) => {
@@ -183,6 +206,15 @@
 				reject(err);
 			});
 		});
+	}
+
+	function isSpecificFile(_name){
+		let _match = false;
+		checkFileTypes.forEach((_ext) => {
+			if(_name.includes(`.${_ext}`))
+				_match = true;
+		});
+		return _match;
 	}
 
 	function moveFile(_folder, _file){
