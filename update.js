@@ -7,26 +7,31 @@
 	    output: process.stdout
 	});
 
+	let confirm = {};
+
 	const targetFolders = ["CR", "Data", "PDF", "QB108"];
+	let missFolders = [];
 	let boxChildfolders = [];
 
-	let cloudFolder = await getCloudFolder();
+	let cloudFolder = await ask("輸入雲端資料夾路徑 => ");
 	try {
 		cloudFolder = cloudFolder.trim();
 		if(cloudFolder[cloudFolder.length - 1] == "/")
 			cloudFolder = cloudFolder.substring(0, cloudFolder.length - 1);
 		fs.accessSync(cloudFolder, fs.constants.R_OK | fs.constants.W_OK);
+		confirm["雲端資料夾路徑"] = cloudFolder;
 	} catch (err) {
 		console.error('cannot access cloudFolder!', err);
 		process.exit(0);
 	}
 
-	let boxFolder = await getBoxFolder();
+	let boxFolder = await ask("輸入硬碟資料夾路徑 => ");
 	try {
 		boxFolder = boxFolder.trim();
 		if(boxFolder[boxFolder.length - 1] == "/")
 			boxFolder = boxFolder.substring(0, boxFolder.length - 1);
 		fs.accessSync(boxFolder, fs.constants.R_OK | fs.constants.W_OK);
+		confirm["硬碟資料夾路徑"] = boxFolder;
 	} catch (err) {
 		console.error('cannot access boxFolder!', err);
 		process.exit(0);
@@ -38,65 +43,89 @@
 	//check folder
 	boxChildfolders = await getChildFolders(boxFolder);
 
-	if(childFoldersMatch())
+	if(childFoldersMatch()){
+		confirm["資料夾檢測"] = `${targetFolders.join(",")} 皆存在`;
+		try{
+			let _configPath = `${boxFolder}/../Resources/config.txt`;
+			fs.accessSync(_configPath, fs.constants.R_OK | fs.constants.W_OK);
+			let _txt = fs.readFileSync(_configPath, "utf-8");
+			let _version = _txt.split("<Version>")[1].split("</Version>")[0];
+			let _newVersion = await ask(`請輸入新的 config version（目前為${_version}）=> `);
+			let _newTxt = _txt.replace(_version, _newVersion);
+			fs.writeFileSync(_configPath, _newTxt);
+			confirm["config檔"] = _newVersion;
+		}
+		catch(err){
+			confirm["config檔"] = "未找到config檔"; 
+			console.log(err);
+		}
 		start();
+	}
 	else{
-		rl.question("Folders not match!! Continue? (y/n) ", function(_continue) {
-	    	if(_continue === "y")
-		    	start();
-		});
+		confirm["資料夾檢測"] = `硬碟資料夾有少(${missFolders.join(",")})`;
+		let _continue = await ask(`硬碟資料夾有少(${missFolders.join(",")}) 繼續嗎? (y/n)`);
+		if(_continue.toLowerCase() === "y")
+	    	start();
+	    else{
+	    	waitForExit();
+	    }
 	}
 
-	function getCloudFolder(){
+	function ask(_question){
 		return new Promise((resolve, reject) => {
-			rl.question("輸入雲端資料夾路徑 => ", function(_path) {
-		    	resolve(_path);
-			});
-		});
-	}
-
-	function getBoxFolder(){
-		return new Promise((resolve, reject) => {
-			rl.question("輸入硬碟資料夾路徑 => ", function(_path) {
-		    	resolve(_path);
+			rl.question(_question, function(_ans) {
+		    	resolve(_ans);
 			});
 		});
 	}
 
 	async function start(){
 		try{
-			let _getFilesPromises = [];
-			targetFolders.forEach((_folder) => {
-				_getFilesPromises.push(getFilesMap(`${cloudFolder}/${_folder}`));
-			});
+			console.log(confirm);
+			let _ok = await ask("資料是否正確? (y/n)");
+			if(_ok.toLowerCase() === "y"){
+				let _getFilesPromises = [];
+				targetFolders.forEach((_folder) => {
+					_getFilesPromises.push(getFilesMap(`${cloudFolder}/${_folder}`));
+				});
 
-			let _maps = await Promise.all(_getFilesPromises);
+				let _maps = await Promise.all(_getFilesPromises);
 
-			let _moveFilePromises = [];
+				let _moveFilePromises = [];
 
-			_maps.forEach((_map) => {
-				// {
-				// 	folder: [files],
-				// 	folder: [files],
-				// }
-				let _folders = Object.keys(_map);
-				
-				_folders.forEach((_folder) => {
-					let _files = _map[_folder];
-					total += _files.length;
-					_files.forEach((_file) => {
-						_moveFilePromises.push(moveFile(_folder, _file));
+				_maps.forEach((_map) => {
+					// {
+					// 	folder: [files],
+					// 	folder: [files],
+					// }
+					let _folders = Object.keys(_map);
+					
+					_folders.forEach((_folder) => {
+						let _files = _map[_folder];
+						total += _files.length;
+						_files.forEach((_file) => {
+							_moveFilePromises.push(moveFile(_folder, _file));
+						});
 					});
 				});
-			});
 
-			await Promise.all(_moveFilePromises);
+				await Promise.all(_moveFilePromises);
 
-			console.log("OK");
+				waitForExit();
+			}
+			else
+				waitForExit();
 		}
 		catch(err){
 			console.log("err", err);
+
+			waitForExit();
 		}
+	}
+
+	async function waitForExit(){
+		await ask(`按任意鍵結束`);
+		process.exit(0);
 	}
 	
 	function getChildFolders(_root){
@@ -117,8 +146,10 @@
 		let _match = true;
 
 		targetFolders.forEach((_folder) => {
-			if(!boxChildfolders.includes(_folder))
+			if(!boxChildfolders.includes(_folder)){
 				_match = false;
+				missFolders.push(_folder);
+			}
 		});
 
 		return _match;
